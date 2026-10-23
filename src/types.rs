@@ -46,7 +46,7 @@ pub struct Par2File {
 }
 
 /// Checksum data for a single slice (block) of a file.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SliceChecksum {
     /// MD5 hash of this slice.
     pub md5: Md5Hash,

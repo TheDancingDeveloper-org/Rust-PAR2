@@ -79,6 +79,52 @@ if !result.all_correct() && result.repair_possible {
 }
 ```
 
+### In-memory repair (no file I/O)
+
+`Repair` rebuilds missing slices from slices you already hold in memory, such
+as article bodies from a Usenet download, plus recovery blocks. It reads and
+writes no files. Feed each present slice once, in any order, then solve:
+
+```rust
+use rust_par2::recovery::RecoveryBlock;
+use rust_par2::{BlockMap, Repair};
+# fn demo(file_set: &rust_par2::Par2FileSet, recovery: Vec<RecoveryBlock>,
+#         present: Vec<(usize, Vec<u8>)>, mut missing: Vec<usize>) -> Result<(), rust_par2::RepairError> {
+// Global slice indices run across files in the Main packet's file order.
+let map = BlockMap::new(file_set);
+let slice_size = file_set.slice_size as usize;
+
+let mut repair = Repair::new_owning(recovery, slice_size, map.total_blocks as usize)?;
+
+for (index, bytes) in &present {
+    // Verify before feeding: a corrupt slice cannot be taken back out.
+    let loc = map.global_to_file(*index).unwrap();
+    let file = &file_set.files[&loc.file.file_id];
+    if file.slice_matches(loc.local_index as usize, bytes, file_set.slice_size) {
+        repair.feed(*index, bytes)?; // the last slice of a file may be short
+    } else {
+        missing.push(*index);
+    }
+}
+repair.truncate_rows(missing.len()); // optional: free rows solve won't use
+
+// Every slice must be either fed or listed as missing.
+for (index, slice) in repair.solve(&missing)? {
+    let loc = map.global_to_file(index).unwrap();
+    // `slice` is zero-padded to slice_size; write only loc.len bytes at loc.offset.
+    let _ = (&loc.file.filename, loc.offset, &slice[..loc.len]);
+}
+# Ok(()) }
+```
+
+`solve` fails with `RepairError::InsufficientRecovery` when more slices are
+missing than recovery rows are loaded. Peak memory is `rows × slice_size` for
+the accumulators plus `missing × slice_size` for the output, plus whatever you
+buffer before feeding. `feed_batch` takes several slices at once and uses the
+same cache-tiled SIMD path as the file-based repair, which is built on `Repair`.
+`SliceHasher` computes the IFSC MD5 + CRC32 pair incrementally if a slice
+arrives in pieces.
+
 ## Performance
 
 Benchmarked against [par2cmdline-turbo](https://github.com/animetosho/par2cmdline-turbo)
@@ -221,6 +267,9 @@ than treating the entire file as lost.
 | `repair(file_set, dir)` | Verify + repair in one call                          |
 | `repair_from_verify(file_set, dir, verify_result)` | Repair with pre-computed verify |
 | `compute_hash_16k(path)` | MD5 of first 16 KiB (for file identification)      |
+| `Repair::new_owning(recovery, slice_size, total)` | In-memory repair builder: `feed`, `feed_batch`, `solve` |
+| `BlockMap::new(file_set)` | Map global slice indices to (file, offset, length) |
+| `SliceHasher::checksum(data, slice_size)` | IFSC MD5 + CRC32 of a slice (zero-padded) |
 
 ### Key types
 
@@ -243,6 +292,8 @@ than treating the entire file as lost.
 | `RepairError::SingularMatrix` | Recovery blocks are linearly dependent         |
 | `RepairError::NoDamage` | Nothing to repair (all files intact)               |
 | `RepairError::VerifyFailed` | Post-repair verification failed                |
+| `RepairError::SliceOutOfRange` / `SliceTooLong` / `DuplicateSlice` / `IncompleteFeed` | Invalid input to the `Repair` builder |
+| `RepairError::InvalidSliceSize` / `InvalidRecoveryBlock` | Bad `Repair` construction arguments |
 
 ## Dependencies
 
