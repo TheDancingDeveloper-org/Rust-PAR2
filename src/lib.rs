@@ -33,13 +33,16 @@ pub mod matrix;
 mod packets;
 pub mod recovery;
 pub mod repair;
+pub mod slice;
 pub mod types;
 mod verify;
 
 pub use packets::{ParseError, parse_par2_file as parse, parse_par2_reader};
 pub use repair::{
-    RepairError, RepairResult, repair, repair_from_verify, repair_from_verify_no_reverify,
+    BlockFile, BlockMap, Repair, RepairError, RepairResult, SliceLocation, build_block_map, repair,
+    repair_from_verify, repair_from_verify_no_reverify,
 };
+pub use slice::SliceHasher;
 pub use types::{
     DamagedFile, Md5Hash, MissingFile, Par2File, Par2FileSet, SliceChecksum, VerifiedFile,
     VerifyResult,

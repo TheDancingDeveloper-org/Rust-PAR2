@@ -14,7 +14,7 @@ use crate::packets::{HEADER_SIZE, MAGIC};
 const TYPE_RECOVERY: &[u8; 16] = b"PAR 2.0\x00RecvSlic";
 
 /// A recovery block extracted from a RecoverySlice packet.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RecoveryBlock {
     /// The exponent (recovery block index) used in the Vandermonde matrix.
     pub exponent: u32,
